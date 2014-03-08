@@ -159,7 +159,7 @@
   (identity addr)
   )
 
-(defmacro when-flagged (flag &body body)
+(defmacro when-flagged% (flag &body body)
   "Checks if a given flag is set. The flag field is expected to be named
 FIELDS and is for use inside READ-FLOW only!"
   `(when (not (zerop (logand fields ,flag)))
@@ -169,15 +169,17 @@ FIELDS and is for use inside READ-FLOW only!"
   "Checks if a given flag is set. The flag field is expected to be named
 FIELDS and is for use inside READ-FLOW only!"
   `(when (not (zerop (logand fields ,flag)))
-    ,@body))
+     (format t "~a~%" ',flag)
+     ,@body))
 
-
+(defparameter bcount 0)
 (defun read-n-bytes (stream n)
   "Read from STREAM a total of N bytes, mung them together as a single
 integer. Expects 8-bit bytes."
   (let ((acc 0))
     (loop for r from 1 to n
 	  do (setf acc (logior (ash acc 8) (read-byte stream))))
+    (setf bcount (+ n bcount))
     acc))
 
 #|
@@ -202,83 +204,89 @@ integer. Expects 8-bit bytes."
 #define STORE_FIELD_FLOW_ENGINE_INFO    (1U<<18)
 
 |#
-(defun read-flow (flow-header &optional flow-obj)
+
+(defun read-flow (stream &optional flow-obj)
   "(read-flow <flow-header> &optional flow-object)
 
 This function reads one flow entry from a log file (return value from
 OPEN-LOG) and returns it. If a flow object is passed in as an optional
 parameter, this flow object is re-used for storage instead of allocating
 a new instance."
-  (let ((stream (stream flow-header)))
+  (let ((flow-header (read-header stream)))
     (let ((fields (fields flow-header)))
       (let ((flow (if flow-obj
 		      flow-obj
-                    (make-instance 'flow)))
+                      (make-instance 'flow)))
 	    pad)
         (handler-case
-         (progn
-           (when-flagged +store-field-tag+
-                         (setf (tag flow) (read-n-bytes stream 4)))
-           (when-flagged +store-field-recv-time+
-                         (setf (recv-time flow) (read-n-bytes stream 4))
-                         (setf (recv-time-usecs flow) (read-n-bytes stream 4)))
-           (when-flagged +store-field-proto-flags-tos+
-                         (setf (tcp-flags flow) (read-n-bytes stream 1))
-                         (setf (protocol flow) (read-n-bytes stream 1))
-                         (setf (tos flow) (read-n-bytes stream 1))
-                         (setf pad (read-n-bytes stream 1)))
-           (when-flagged +store-field-agent-addr4+
-                         (setf (agent-addr flow) (make-ipv4 (read-n-bytes stream 4))))
-           (when-flagged +store-field-agent-addr6+
-                         (setf (agent-addr flow) (make-ipv6 (read-n-bytes stream 16))))
-           (when-flagged +store-field-src-addr4+
-                         (setf (src-addr flow) (make-ipv4 (read-n-bytes stream 4))))
-           (when-flagged +store-field-src-addr6+
-                         (setf (src-addr flow) (make-ipv6 (read-n-bytes stream 16))))
-           (when-flagged +store-field-dst-addr4+
-                         (setf (dst-addr flow) (make-ipv4 (read-n-bytes stream 4))))
-           (when-flagged +store-field-dst-addr6+
-                         (setf (dst-addr flow) (make-ipv6 (read-n-bytes stream 16))))
-           (when-flagged +store-field-gateway-addr4+
-                         (setf (gateway-addr flow) (make-ipv4 (read-n-bytes stream 4))))
-           (when-flagged +store-field-gateway-addr6+
-                         (setf (gateway-addr flow) (make-ipv6 (read-n-bytes stream 16))))
-           (when-flagged +store-field-srcdst-port+
-                         (setf (src-port flow) (read-n-bytes stream 2))
-                         (setf (dst-port flow) (read-n-bytes stream 2)))
-           (when-flagged +store-field-packets+
-                         (setf (packets flow) (read-n-bytes stream 8)))
-           (when-flagged +store-field-octets+
-                         (setf (octets flow) (read-n-bytes stream 8)))
-           (when-flagged +store-field-if-indices+
-                         (setf (if-index-in flow) (read-n-bytes stream 2))
-                         (setf (if-index-out flow) (read-n-bytes stream 2)))
-           (when-flagged +store-field-agent-info+
-                         (setf (sys-uptime-ms flow) (read-n-bytes stream 4))
-                         (setf (time-sec flow) (read-n-bytes stream 4))
-                         (setf (time-nanosec flow) (read-n-bytes stream 4))
-                         (setf (netflow-version flow) (read-n-bytes stream 2))
-                         (setf pad (read-n-bytes stream 2)))
-           (when-flagged +store-field-flow-times+
-                         (setf (flow-start flow) (read-n-bytes stream 4))
-                         (setf (flow-finish flow) (read-n-bytes stream 4)))
-           (when-flagged +store-field-as-info+
-                         (setf (src-as flow) (read-n-bytes stream 2))
-                         (setf (dst-as flow) (read-n-bytes stream 2))
-                         (setf (src-mask flow) (read-n-bytes stream 1))
-                         (setf (dst-mask flow) (read-n-bytes stream 1))
-                         (setf pad (read-n-bytes stream 2)))
-           (when-flagged +store-field-flow-engine-info+
-                         (setf (engine-type flow) (read-n-bytes stream 1))
-                         (setf (engine-id flow) (read-n-bytes stream 1))
-                         (setf pad (read-n-bytes stream 2))
-                         (setf (flow-sequence flow) (read-n-bytes stream 4)))
-           (when-flagged +store-field-crc32+
-                         (setf pad (read-n-bytes stream 4)))
-           flow)
-         (end-of-file () nil))))
+            (progn (setf bcount 0)
+                   (when-flagged +store-field-tag+
+                     (setf (tag flow) (read-n-bytes stream 4)))
+                   (when-flagged +store-field-recv-time+
+                     (setf (recv-time flow) (read-n-bytes stream 4))
+                     (setf (recv-time-usecs flow) (read-n-bytes stream 4)))
+                   (when-flagged +store-field-proto-flags-tos+
+                     (setf (tcp-flags flow) (read-n-bytes stream 1))
+                     (setf (protocol flow) (read-n-bytes stream 1))
+                     (setf (tos flow) (read-n-bytes stream 1))
+                     (setf pad (read-n-bytes stream 1)))
+                   (when-flagged +store-field-agent-addr4+
+                     (setf (agent-addr flow) (make-ipv4 (read-n-bytes stream 4))))
+                   (when-flagged +store-field-agent-addr6+
+                     (setf (agent-addr flow) (make-ipv6 (read-n-bytes stream 16))))
+                   (when-flagged +store-field-src-addr4+
+                     (setf (src-addr flow) (make-ipv4 (read-n-bytes stream 4))))
+                   (when-flagged +store-field-src-addr6+
+                     (setf (src-addr flow) (make-ipv6 (read-n-bytes stream 16))))
+                   (when-flagged +store-field-dst-addr4+
+                     (setf (dst-addr flow) (make-ipv4 (read-n-bytes stream 4))))
+                   (when-flagged +store-field-dst-addr6+
+                     (setf (dst-addr flow) (make-ipv6 (read-n-bytes stream 16))))
+                   (when-flagged +store-field-gateway-addr4+
+                     (setf (gateway-addr flow) (make-ipv4 (read-n-bytes stream 4))))
+                   (when-flagged +store-field-gateway-addr6+
+                     (setf (gateway-addr flow) (make-ipv6 (read-n-bytes stream 16))))
+                   (when-flagged +store-field-srcdst-port+
+                     (setf (src-port flow) (read-n-bytes stream 2))
+                     (setf (dst-port flow) (read-n-bytes stream 2)))
+                   (when-flagged +store-field-packets+
+                     (setf (packets flow) (read-n-bytes stream 8)))
+                   (when-flagged +store-field-octets+
+                     (setf (octets flow) (read-n-bytes stream 8)))
+                   (when-flagged +store-field-if-indices+
+                     (setf (if-index-in flow) (read-n-bytes stream 2))
+                     (setf (if-index-out flow) (read-n-bytes stream 2)))
+                   (when-flagged +store-field-agent-info+
+                     (setf (sys-uptime-ms flow) (read-n-bytes stream 4))
+                     (setf (time-sec flow) (read-n-bytes stream 4))
+                     (setf (time-nanosec flow) (read-n-bytes stream 4))
+                     (setf (netflow-version flow) (read-n-bytes stream 2))
+                     (setf pad (read-n-bytes stream 2)))
+                   (when-flagged +store-field-flow-times+
+                     (setf (flow-start flow) (read-n-bytes stream 4))
+                     (setf (flow-finish flow) (read-n-bytes stream 4)))
+                   (when-flagged +store-field-as-info+
+                     (setf (src-as flow) (read-n-bytes stream 2))
+                     (setf (dst-as flow) (read-n-bytes stream 2))
+                     (setf (src-mask flow) (read-n-bytes stream 1))
+                     (setf (dst-mask flow) (read-n-bytes stream 1))
+                     (setf pad (read-n-bytes stream 2)))
+                   (when-flagged +store-field-flow-engine-info+
+                     (setf (engine-type flow) (read-n-bytes stream 1))
+                     (setf (engine-id flow) (read-n-bytes stream 1))
+                     (setf pad (read-n-bytes stream 2))
+                     (setf (flow-sequence flow) (read-n-bytes stream 4)))
+                   (when-flagged +store-field-crc32+
+                     (setf pad (read-n-bytes stream 4)))
+                   
+                   (let ((rest (- (len-words flow-header) bcount)))
+                     (read-n-bytes stream rest)
+                     (format t "bcount:~x rest:~x~%" bcount rest))
+                   (setf bcount 0) flow)
+          (end-of-file () nil))
+        flow)))
 
-    ))
+    )
 
 
 (defun read-flow-v2 (flow-header &optional flow-obj)
@@ -374,7 +382,17 @@ the relevant file header information."
                            :flags flags
                            :stream stream)))))))
 
-
+(defun read-header (stream)
+  (let ((version (read-n-bytes stream 1)))
+    (let ((len-words (* 4 (read-n-bytes stream 1))))
+	(let ((reserved (read-n-bytes stream 2)))
+	  (let ((fields (read-n-bytes stream 4))) 
+            (make-instance 'store-header
+                           :version version
+			   :len-words len-words
+                           :fields fields
+			   :stream stream))
+          ))))
 
 (defun open-log (file)
   "(open-log <file name>
@@ -382,16 +400,8 @@ the relevant file header information."
 This function opens a new log file and returns a header structure containing
 the relevant file header information."
   (let ((stream (open file :element-type '(unsigned-byte 8) :direction :input)))
-
-    (let ((version (read-n-bytes stream 1)))
-      (let ((len-words (read-n-bytes stream 1)))
-	(let ((reserved (read-n-bytes stream 2)))
-	  (let ((fields (read-n-bytes stream 4)))
-	    (make-instance 'store-header
-                           :version version
-			   :len-words len-words
-			   :fields fields
-			   :stream stream)))))))
+    stream
+    ))
 
 (defun close-log (flow)
   "(close-log flow)
@@ -474,7 +484,7 @@ FORMAT-IPV4 to the indicated stream."
 (defun format-flow (stream f)
   "formats a string representing the next entry in the flowd log
    <stream> can be stream to write to or nil to return string"
-  (format stream "FLOW recv_time ~d.~d proto ~a tcpflags ~a tos ~a agent [~a] src [~a]:~a dst [~a]"
+  (format stream "FLOW recv_time ~d.~d proto ~a tcpflags ~a tos ~a agent [~a] src [~a]:~a dst [~a]~%"
           (recv-time f)
           (recv-time-usecs f)
           (hex (protocol f))
@@ -498,7 +508,7 @@ FORMAT-IPV4 to the indicated stream."
          (let ((,var (setq ,store (open-log ,filename))))
            ,@body)
          )
-       (when ,store (close-log ,store)))))
+       (when ,store (close ,store)))))
 #|
 (with-open-log (log "/var/log/flowd/flowd.bin") (do ((f (read-flow log) (read-flow log))) ((eql f nil)) (format-flow t (read-flow log))))
 (with-open-log (store "/var/log/flowd/flowd.bin")
