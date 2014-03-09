@@ -2,7 +2,9 @@
 
 
 (defpackage #:cl-flowd
-  (:use #:cl)
+  (:use #:cl
+        #:cl-annot
+        #:cl-annot.class)
   (:shadow #:tag #:stream)
   (:export 
    #:+store-magic+ #:+store-version+ #:store-field-tag #:store-field-recv-time
