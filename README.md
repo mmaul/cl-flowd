@@ -43,4 +43,4 @@ to the flow-reader, reader.py and reader.pl programs
       (do ((f (read-flow flog) 
            (read-flow flog))) 
            ((eql f nil)) 
-           (format-flow t (read-flow flog))))
+           (format-flow t f)))
