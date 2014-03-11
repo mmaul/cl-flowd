@@ -20,12 +20,17 @@ Flowd Collector Info
 This library uses Netflow collector Flowd which is available at:
 http://www.mindrot.org/projects/flowd/
 
-The current version of flowd in the google code repo does not compile.
-Use http://flowd.googlecode.com/files/flowd-0.9.1.tar.gz as it predates
-introduction of privledge seperation feature which is where the current
-issue lies. The issue has been raised with the maintainer. 
+Flowd can be build from tarball our Mecurial repo
+Tarball: http://flowd.googlecode.com/files/flowd-0.9.1.tar.gz
+Mecurial: hg clone https://code.google.com/p/flowd/
 
-Regardless flowd is a simple and effective Netflow collection solution.
+Buile Instructions:
+  autoreconf
+  configure
+  make
+  make install
+
+Review ''man flowd.conf'' , ''man flowd'' and INSTALL for configuration
 
 
 Example
