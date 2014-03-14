@@ -174,13 +174,6 @@ FIELDS and is for use inside READ-FLOW only!"
   `(when (not (zerop (logand fields ,flag)))
     ,@body))
 
-(defmacro when-flagged% (flag &body body)
-  "Checks if a given flag is set. The flag field is expected to be named
-FIELDS and is for use inside READ-FLOW only!"
-  `(when (not (zerop (logand fields ,flag)))
-     (format t "~a~%" ',flag)
-     ,@body))
-
 (defun read-n-bytes (stream n)
   "Read from STREAM a total of N bytes, mung them together as a single
 integer. Expects 8-bit bytes."
@@ -375,14 +368,13 @@ a new instance."
 (defun read-header (stream)
   (let ((version (read-n-bytes stream 1)))
     (let ((len-words (* 4 (read-n-bytes stream 1))))
-	(let ((reserved (read-n-bytes stream 2)))
-	  (let ((fields (read-n-bytes stream 4))) 
+	(read-n-bytes stream 2) ; RESERVED BYTE FEILD
+	(let ((fields (read-n-bytes stream 4))) 
             (make-instance 'store-header
                            :version version
 			   :len-words len-words
                            :fields fields
-			   :stream stream))
-          ))))
+			   :stream stream)))))
 @export
 (defun open-log (file)
   "(open-log <file name>
@@ -446,9 +438,9 @@ containing the relevant file header information."
 
 @export
 @inline
-(defun hex (v)
+(defun hex (v &key stream)
   "Sends string hex value of <v> to <stream>"
-  (format nil "~x" v))
+  (format stream "~x" v))
 
 (defun format-addr (flow-obj flags chunk)
   (let ((flag4 (car flags))
@@ -457,7 +449,7 @@ containing the relevant file header information."
     (or (when (= flag4 (logand flag4 fields))
 	  (format-ipv4 chunk))
 	(when (= flag6 (logand flag6 fields))
-	  (hex nil chunk)))))
+	  (hex chunk)))))
 
 @export
 (defun format-ipv4 (chunk &optional stream mask)
